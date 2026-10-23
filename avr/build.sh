@@ -9,10 +9,15 @@
 #      libc, libm, the devices' start-up objects) and the linker scripts, compiled once here;
 #   2. GMP, MPFR and MPC, then cc1 and cc1plus from the same GCC source to WebAssembly;
 #   3. as, ld and objcopy from the same binutils source to WebAssembly;
-#   4. the sysroot the WebAssembly tools read (headers, libraries, linker scripts) and the
-#      sources' licences.
+#   4. the sysroot the WebAssembly tools read (headers, libraries, linker scripts);
+#   5. the Arduino platform: ArduinoCore-avr and the libraries in sources.txt compiled for each
+#      processor as the Arduino IDE compiles them (its platform.txt flags, without LTO), their
+#      headers and archives in the sysroot, and arduino/libraries.txt (name, version, include
+#      directory, archive, licence of each);
+#   6. Arduino's ctags in WebAssembly (the sketch preprocessor's function prototypes);
+#   7. the sources' licences.
 # /dist receives: cc1.js, cc1.wasm, cc1plus.js, cc1plus.wasm, avr-as.js, avr-ld.js, objcopy.js,
-# sysroot/, licenses/, manifest.txt (each file's size, SHA-256 and path).
+# ctags.js, sysroot/, licenses/, manifest.txt (each file's size, SHA-256 and path).
 set -euo pipefail
 recipe=$(cd "$(dirname "$0")" && pwd)
 dist=${1:-/dist}
@@ -60,11 +65,12 @@ fi
 
 # ── 2. cc1 and cc1plus in WebAssembly ─────────────────────────────────────────────────────────
 # CC_FOR_BUILD stays native (the generator programs run during the build). Emscripten's musl has
-# psignal(const char*): -DHAVE_PSIGNAL keeps libiberty's own out. AR's plugin probe would ask for
-# an LTO plugin that does not exist here.
+# psignal(const char*): -DHAVE_PSIGNAL keeps libiberty's own out. CODY_NETWORKING=0 keeps C++
+# modules' mapper (libcody) off sockets: a page has none. AR's plugin probe would ask for an LTO
+# plugin that does not exist here.
 printf 'am_cv_ar_has_plugin=no\nam_cv_ranlib_has_plugin=no\n' > /build/emsc-site
 export CONFIG_SITE=/build/emsc-site CC_FOR_BUILD=gcc CXX_FOR_BUILD=g++ HOST_CC=gcc BUILD_CC=gcc
-host_flags="-DHAVE_PSIGNAL=1 -DELIDE_CODE -Os"
+host_flags="-DHAVE_PSIGNAL=1 -DCODY_NETWORKING=0 -DELIDE_CODE -Os"
 if [ ! -f /opt/wasmdeps/lib/libmpc.a ]; then
   (cd gmp-6.3.0 && emconfigure ./configure --build="$build" --host=wasm32 --prefix=/opt/wasmdeps --disable-shared --enable-static --disable-assembly CC_FOR_BUILD=gcc && emmake make -j"$jobs" && emmake make install && make distclean)
   (cd mpfr-4.2.1 && emconfigure ./configure --build="$build" --host=wasm32 --prefix=/opt/wasmdeps --disable-shared --enable-static --with-gmp=/opt/wasmdeps && emmake make -j"$jobs" && emmake make install && make distclean)
@@ -116,9 +122,75 @@ cp -a /opt/avr/avr/include "$dist/sysroot/avr/include"
 cp -a /opt/avr/avr/lib/avr5 /opt/avr/avr/lib/ldscripts "$dist/sysroot/avr/lib/"
 cp -a /opt/avr/lib/gcc/avr/15.2.0/avr5/libgcc.a "$dist/sysroot/libgcc/avr5/"
 cp -a /opt/avr/lib/gcc/avr/15.2.0/include/. /opt/avr/lib/gcc/avr/15.2.0/include-fixed/. "$dist/sysroot/gcc-include/"
-for s in gcc-15.2.0 binutils-2.45 gmp-6.3.0 mpfr-4.2.1 mpc-1.3.1 avr-libc-2.2.1; do
+
+# ── 5. The Arduino platform ──────────────────────────────────────────────────────────────────
+# Per processor (the Nano's variant, eightanaloginputs, over standard): the core as libcore.a and
+# each library as lib<name>.a, compiled with platform.txt's flags for that board (F_CPU 16 MHz,
+# ARDUINO 10819, ARDUINO_AVR_NANO, ARDUINO_ARCH_AVR) but without -flto: the browser links with
+# ld alone. A library's sources are its src/ tree (Arduino's 1.5 format) or its top level and
+# utility/ (the older one); every library's include directory is on every compile, as the IDE
+# resolves a library's own includes.
+core=/build/ArduinoCore-avr-1.8.8
+arduino="$dist/sysroot/arduino"
+mkdir -p "$arduino/cores" "$arduino/variants" "$arduino/libraries"
+cp -a "$core/cores/arduino" "$arduino/cores/arduino"
+find "$arduino/cores/arduino" -type f ! -name '*.h' ! -name new -delete
+for v in standard eightanaloginputs; do install -D -m 644 "$core/variants/$v/pins_arduino.h" "$arduino/variants/$v/pins_arduino.h"; done
+libraries=""
+for l in Wire SPI EEPROM SoftwareSerial; do libraries="$libraries $core/libraries/$l"; done
+for l in Servo-1.3.0 LiquidCrystal-1.0.7 Adafruit-GFX-Library-1.13.0 Adafruit_BusIO-1.17.4 Adafruit_SSD1306-2.5.17 Adafruit_SHT31-2.2.2 Adafruit_NeoPixel-1.15.5 arduino-core-0.7.3 arduino-i2c-scd4x-1.1.0 LedControl-1.0.6; do libraries="$libraries /build/$l"; done
+property() { sed -n "s/^$2=//p" "$1/library.properties" | tr -d '\r'; }
+sources() { # a library's sources, in a stable order
+  if [ -d "$1/src" ]; then find "$1/src" -name '*.c' -o -name '*.cpp' -o -name '*.S'
+  else find "$1" -maxdepth 1 \( -name '*.c' -o -name '*.cpp' -o -name '*.S' \); [ -d "$1/utility" ] && find "$1/utility" -name '*.c' -o -name '*.cpp' -o -name '*.S'
+  fi | LC_ALL=C sort
+}
+includes="-I$core/cores/arduino -I$core/variants/eightanaloginputs"
+for l in $libraries; do if [ -d "$l/src" ]; then includes="$includes -I$l/src"; else includes="$includes -I$l"; fi; done
+printf '# name version include archive licence\n' > "$arduino/libraries.txt"
+for mcu in atmega328p atmega168p; do
+  out=/build/arduino-$mcu && rm -rf "$out" "$arduino/lib/$mcu" && mkdir -p "$out" "$arduino/lib/$mcu"
+  defines="-mmcu=$mcu -DF_CPU=16000000L -DARDUINO=10819 -DARDUINO_AVR_NANO -DARDUINO_ARCH_AVR"
+  cflags="-c -Os -w -std=gnu11 -ffunction-sections -fdata-sections $defines"
+  cxxflags="-c -Os -w -std=gnu++11 -fpermissive -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -Wno-error=narrowing $defines"
+  sflags="-c -x assembler-with-cpp $defines"
+  archive() { # the archive's name, then its sources
+    local name=$1 dir="$out/$1" objects=() f o; shift; mkdir -p "$dir"
+    for f in "$@"; do
+      o="$dir/$(echo "${f#/build/}" | tr / _).o"
+      case $f in *.c) avr-gcc $cflags $includes "$f" -o "$o" ;; *.cpp) avr-g++ $cxxflags $includes "$f" -o "$o" ;; *.S) avr-gcc $sflags $includes "$f" -o "$o" ;; esac
+      objects+=("$o")
+    done
+    avr-ar rcsD "$arduino/lib/$mcu/lib$name.a" "${objects[@]}"
+  }
+  archive core $(find "$core/cores/arduino" -name '*.c' -o -name '*.cpp' -o -name '*.S' | LC_ALL=C sort)
+  for l in $libraries; do
+    name=$(property "$l" name | tr -c 'A-Za-z0-9_\n' _)
+    archive "$name" $(sources "$l")
+    [ $mcu = atmega328p ] || continue
+    # The headers where the sketch's compile finds them: the library's include directory.
+    if [ -d "$l/src" ]; then from="$l/src" include="libraries/$name/src"; else from="$l" include="libraries/$name"; fi
+    (cd "$from" && find . \( -path ./examples -o -path ./fontconvert -o -path ./extras \) -prune -o \( -name '*.h' -o -name '*.hpp' -o -name '*.inc' \) -print | LC_ALL=C sort | while read -r h; do install -D -m 644 "$h" "$arduino/$include/${h#./}"; done)
+    licence=$(ls "$l" | grep -iE '^(license|licence|copying)' | head -1 || true)
+    printf '%s %s %s lib%s.a %s\n' "$name" "$(property "$l" version)" "$include" "$name" "${licence:--}" >> "$arduino/libraries.txt"
+  done
+done
+
+# ── 6. Arduino's ctags in WebAssembly ────────────────────────────────────────────────────────
+# The sketch preprocessor runs it over the concatenated .ino files as arduino-cli does
+# (ctags -u --language-force=c++ -f - --c++-kinds=svpf --fields=KSTtzns --line-directives).
+if [ ! -f /build/wasm-ctags/ctags ]; then
+  rm -rf /build/wasm-ctags && cp -a /build/ctags-5.8-arduino11 /build/wasm-ctags && cd /build/wasm-ctags
+  emconfigure ./configure --build="$build" --host=wasm32 --disable-etags --disable-external-sort
+  emmake make -j"$jobs" CFLAGS=-Os "LDFLAGS=$single"
+  cd /build
+fi
+install -D /build/wasm-ctags/ctags "$dist/ctags.js"
+
+# ── 7. The licences ──────────────────────────────────────────────────────────────────────────
+for s in gcc-15.2.0 binutils-2.45 gmp-6.3.0 mpfr-4.2.1 mpc-1.3.1 avr-libc-2.2.1 ctags-5.8-arduino11 ArduinoCore-avr-1.8.8 Servo-1.3.0 LiquidCrystal-1.0.7 Adafruit-GFX-Library-1.13.0 Adafruit_BusIO-1.17.4 Adafruit_SSD1306-2.5.17 Adafruit_SHT31-2.2.2 Adafruit_NeoPixel-1.15.5 arduino-core-0.7.3 arduino-i2c-scd4x-1.1.0 LedControl-1.0.6; do
   mkdir -p "$dist/licenses/$s"
-  for f in /build/$s/COPYING* /build/$s/LICENSE; do [ -f "$f" ] && cp "$f" "$dist/licenses/$s/"; done
+  for f in /build/$s/COPYING* /build/$s/LICENSE* /build/$s/LICENCE* /build/$s/license* /build/$s/README*; do [ -f "$f" ] && cp "$f" "$dist/licenses/$s/"; done
 done
 cp "$recipe/sources.txt" "$dist/licenses/sources.txt"
 (cd "$dist" && find . -type f ! -name manifest.json | sort | while read -r f; do printf '%s %s %s\n' "$(stat -c %s "$f")" "$(sha256sum "$f" | cut -d' ' -f1)" "${f#./}"; done) > "$dist/manifest.txt"

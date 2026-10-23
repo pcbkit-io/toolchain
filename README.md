@@ -10,7 +10,7 @@ of that profile, beside the sources.
 
 | Folder | Profile (release) | What it is | Licences |
 |---|---|---|---|
-| [`avr/`](avr) | `avr-gcc-15.2.0-pcbkit-2` | avr-gcc 15.2.0 (cc1, cc1plus), binutils 2.45 (as, ld, objcopy) and avr-libc 2.2.1 in WebAssembly, for the ATmega328P and ATmega168P (Arduino Uno, Nano, Pro Mini): C and C++, linked with libgcc, libc and libm | GCC and binutils GPL-3.0-or-later (libgcc with the GCC Runtime Library Exception); GMP, MPFR, MPC LGPL-3.0-or-later; avr-libc BSD-3-Clause |
+| [`avr/`](avr) | `avr-gcc-15.2.0-pcbkit-2` | avr-gcc 15.2.0 (cc1, cc1plus), binutils 2.45 (as, ld, objcopy) and avr-libc 2.2.1 in WebAssembly, for the ATmega328P and ATmega168P (Arduino Uno, Nano, Pro Mini): C and C++, linked with libgcc, libc and libm; the Arduino platform: ArduinoCore-avr 1.8.8 and the libraries Wire, SPI, EEPROM, SoftwareSerial, Servo, LiquidCrystal, Adafruit GFX, BusIO, SSD1306, SHT31, NeoPixel, Sensirion Core and SCD4x, LedControl, compiled as the Arduino IDE compiles them, and Arduino's ctags for the sketch preprocessor | GCC and binutils GPL-3.0-or-later (libgcc with the GCC Runtime Library Exception); GMP, MPFR, MPC LGPL-3.0-or-later; avr-libc BSD-3-Clause; ArduinoCore-avr, Servo, LiquidCrystal LGPL-2.1-or-later; Adafruit GFX, SSD1306, SHT31 BSD; BusIO, LedControl MIT; NeoPixel LGPL-3.0; Sensirion BSD-3-Clause; ctags GPL-2.0 |
 
 ## Building
 

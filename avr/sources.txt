@@ -7,3 +7,17 @@ gmp-6.3.0.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz a3c2b80201b89e6861
 mpfr-4.2.1.tar.xz https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.xz 277807353a6726978996945af13e52829e3abd7a9a5b7fb2793894e18f1fcbb2
 mpc-1.3.1.tar.gz https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz ab642492f5cf882b74aa0cb730cd410a81edcdbec895183ce930e706c1c759b8
 avr-libc-2.2.1.tar.bz2 https://github.com/avrdudes/avr-libc/releases/download/avr-libc-2_2_1-release/avr-libc-2.2.1.tar.bz2 006a6306cbbc938c3bdb583ac54f93fe7d7c8cf97f9cde91f91c6fb0273ab465
+# The Arduino platform: the AVR core and the libraries sketches use, at their tagged releases.
+ArduinoCore-avr-1.8.8.tar.gz https://github.com/arduino/ArduinoCore-avr/archive/refs/tags/1.8.8.tar.gz e37de8a50ccf3a6a43aee2d482c066519ec05fb7fff63f57fd9daf0fd238b808
+Servo-1.3.0.tar.gz https://github.com/arduino-libraries/Servo/archive/refs/tags/1.3.0.tar.gz 7b829d24f9165e9d2689d157568f066f290cbe41734a9384b9a06250a69e7993
+LiquidCrystal-1.0.7.tar.gz https://github.com/arduino-libraries/LiquidCrystal/archive/refs/tags/1.0.7.tar.gz 3641e8f4175ee8c66bbbc7e93961cd8ef333b9cd3689aa83c2512a23ba68200c
+Adafruit-GFX-Library-1.13.0.tar.gz https://github.com/adafruit/Adafruit-GFX-Library/archive/refs/tags/1.13.0.tar.gz 8ab038fb445d99f320feb9d463c7afe4cd91475fd8ea9c4047be444aacbb3b29
+Adafruit_SSD1306-2.5.17.tar.gz https://github.com/adafruit/Adafruit_SSD1306/archive/refs/tags/2.5.17.tar.gz 5228d4d2e915f6a4aa15b681bcd27a9f848627f7542283dd3cb3b76445a32ef9
+Adafruit_SHT31-2.2.2.tar.gz https://github.com/adafruit/Adafruit_SHT31/archive/refs/tags/2.2.2.tar.gz fd32c2eaa484e391627d83594e104727d9f09d4da289d895a65533afaa5ebab8
+Adafruit_BusIO-1.17.4.tar.gz https://github.com/adafruit/Adafruit_BusIO/archive/refs/tags/1.17.4.tar.gz 59efa3acd5466e381c1b0313d5f0e824832db1bb24e4e328667e12b7d235d56d
+Adafruit_NeoPixel-1.15.5.tar.gz https://github.com/adafruit/Adafruit_NeoPixel/archive/refs/tags/1.15.5.tar.gz 3aa189a5a397a13539fcb58ff297ab9dc4a4faf45115e48afd533f1337cb0f3b
+arduino-core-0.7.3.tar.gz https://github.com/Sensirion/arduino-core/archive/refs/tags/0.7.3.tar.gz 64854932b97a95f811fcba97251cd8c54c87811bf31f965bc82b11cc2b9ccbe4
+arduino-i2c-scd4x-1.1.0.tar.gz https://github.com/Sensirion/arduino-i2c-scd4x/archive/refs/tags/1.1.0.tar.gz 1df71fcf9e1d93f3e4b53cad6db9876fb4228ca90d3d9f2febb4d6da634e876b
+LedControl-1.0.6.tar.gz https://github.com/wayoda/LedControl/archive/refs/tags/1.0.6.tar.gz 50c8d1f5c96ee5c40e77cc5f62f46ac7560e64cfcf574faee33744bfb6e9f119
+# Arduino's ctags (the sketch preprocessor's function prototypes).
+ctags-5.8-arduino11.tar.gz https://github.com/arduino/ctags/archive/refs/tags/5.8-arduino11.tar.gz 86ca843c62aecb9bc531a73d9b6cef33179bd885b1bf8df9e0c7e9761aa9794d
