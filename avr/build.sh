@@ -124,10 +124,11 @@ cp -a /opt/avr/lib/gcc/avr/15.2.0/avr5/libgcc.a "$dist/sysroot/libgcc/avr5/"
 cp -a /opt/avr/lib/gcc/avr/15.2.0/include/. /opt/avr/lib/gcc/avr/15.2.0/include-fixed/. "$dist/sysroot/gcc-include/"
 
 # ── 5. The Arduino platform ──────────────────────────────────────────────────────────────────
-# Per processor (the Nano's variant, eightanaloginputs, over standard): the core as libcore.a and
-# each library as lib<name>.a, compiled with platform.txt's flags for that board (F_CPU 16 MHz,
-# ARDUINO 10819, ARDUINO_AVR_NANO, ARDUINO_ARCH_AVR) but without -flto: the browser links with
-# ld alone. A library's sources are its src/ tree (Arduino's 1.5 format) or its top level and
+# Per processor and clock (the Nano's variant, eightanaloginputs, over standard): the core as
+# libcore.a and each library as lib<name>.a, compiled with platform.txt's flags for that board —
+# the Nano at 16 MHz (ARDUINO_AVR_NANO) in lib/<mcu>, the 3.3 V Pro Mini at 8 MHz
+# (ARDUINO_AVR_PRO) in lib/<mcu>-8mhz; ARDUINO 10819, ARDUINO_ARCH_AVR — but without -flto: the
+# browser links with ld alone. A library's sources are its src/ tree (Arduino's 1.5 format) or its top level and
 # utility/ (the older one); every library's include directory is on every compile, as the IDE
 # resolves a library's own includes.
 core=/build/ArduinoCore-avr-1.8.8
@@ -148,9 +149,11 @@ sources() { # a library's sources, in a stable order
 includes="-I$core/cores/arduino -I$core/variants/eightanaloginputs"
 for l in $libraries; do if [ -d "$l/src" ]; then includes="$includes -I$l/src"; else includes="$includes -I$l"; fi; done
 printf '# name version include archive licence\n' > "$arduino/libraries.txt"
-for mcu in atmega328p atmega168p; do
-  out=/build/arduino-$mcu && rm -rf "$out" "$arduino/lib/$mcu" && mkdir -p "$out" "$arduino/lib/$mcu"
-  defines="-mmcu=$mcu -DF_CPU=16000000L -DARDUINO=10819 -DARDUINO_AVR_NANO -DARDUINO_ARCH_AVR"
+for build in atmega328p:16000000:NANO: atmega168p:16000000:NANO: atmega328p:8000000:PRO:-8mhz atmega168p:8000000:PRO:-8mhz; do
+  IFS=: read -r mcu clock board suffix <<< "$build"
+  lib=$mcu$suffix
+  out=/build/arduino-$lib && rm -rf "$out" "$arduino/lib/$lib" && mkdir -p "$out" "$arduino/lib/$lib"
+  defines="-mmcu=$mcu -DF_CPU=${clock}L -DARDUINO=10819 -DARDUINO_AVR_$board -DARDUINO_ARCH_AVR"
   cflags="-c -Os -w -std=gnu11 -ffunction-sections -fdata-sections $defines"
   cxxflags="-c -Os -w -std=gnu++11 -fpermissive -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -Wno-error=narrowing $defines"
   sflags="-c -x assembler-with-cpp $defines"
@@ -161,13 +164,13 @@ for mcu in atmega328p atmega168p; do
       case $f in *.c) avr-gcc $cflags $includes "$f" -o "$o" ;; *.cpp) avr-g++ $cxxflags $includes "$f" -o "$o" ;; *.S) avr-gcc $sflags $includes "$f" -o "$o" ;; esac
       objects+=("$o")
     done
-    avr-ar rcsD "$arduino/lib/$mcu/lib$name.a" "${objects[@]}"
+    avr-ar rcsD "$arduino/lib/$lib/lib$name.a" "${objects[@]}"
   }
   archive core $(find "$core/cores/arduino" -name '*.c' -o -name '*.cpp' -o -name '*.S' | LC_ALL=C sort)
   for l in $libraries; do
     name=$(property "$l" name | tr -c 'A-Za-z0-9_\n' _)
     archive "$name" $(sources "$l")
-    [ $mcu = atmega328p ] || continue
+    [ $lib = atmega328p ] || continue
     # The headers where the sketch's compile finds them: the library's include directory.
     if [ -d "$l/src" ]; then from="$l/src" include="libraries/$name/src"; else from="$l" include="libraries/$name"; fi
     (cd "$from" && find . \( -path ./examples -o -path ./fontconvert -o -path ./extras \) -prune -o \( -name '*.h' -o -name '*.hpp' -o -name '*.inc' \) -print | LC_ALL=C sort | while read -r h; do install -D -m 644 "$h" "$arduino/$include/${h#./}"; done)
