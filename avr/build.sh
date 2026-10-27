@@ -18,6 +18,8 @@
 #   7. the sources' licences.
 # /dist receives: cc1.js, cc1.wasm, cc1plus.js, cc1plus.wasm, avr-as.js, avr-ld.js, objcopy.js,
 # ctags.js, sysroot/, licenses/, manifest.txt (each file's size, SHA-256 and path).
+# On a host that built it before: -v <its /build>:/build in an image committed after that build
+# (the native toolchain in /opt) rebuilds only what changed.
 set -euo pipefail
 recipe=$(cd "$(dirname "$0")" && pwd)
 dist=${1:-/dist}
@@ -114,69 +116,114 @@ install -D binutils/objcopy "$dist/objcopy.js"
 cd /build
 
 # ── 4. The sysroot and the licences ──────────────────────────────────────────────────────────
-# The ATmega328P's and ATmega168P's architecture (avr5): avr-libc's headers, libraries and start-up
-# objects, libgcc, GCC's own headers, the linker scripts.
+# The architectures of the processors PCBKit models: avr5 (ATmega328P, ATmega168P, ATmega32U4),
+# avr6 (ATmega2560: 256 KiB, a 3-byte PC) and avr25 (ATtiny85, ATtiny84): avr-libc's headers,
+# libraries and start-up objects, libgcc, GCC's own headers, the linker scripts.
+archs="avr5 avr6 avr25"
 rm -rf "$dist/sysroot" "$dist/licenses"
-mkdir -p "$dist/sysroot/avr/lib" "$dist/sysroot/gcc-include" "$dist/sysroot/libgcc/avr5"
+mkdir -p "$dist/sysroot/avr/lib" "$dist/sysroot/gcc-include"
 cp -a /opt/avr/avr/include "$dist/sysroot/avr/include"
-cp -a /opt/avr/avr/lib/avr5 /opt/avr/avr/lib/ldscripts "$dist/sysroot/avr/lib/"
-cp -a /opt/avr/lib/gcc/avr/15.2.0/avr5/libgcc.a "$dist/sysroot/libgcc/avr5/"
+cp -a /opt/avr/avr/lib/ldscripts "$dist/sysroot/avr/lib/"
+for a in $archs; do
+  cp -a "/opt/avr/avr/lib/$a" "$dist/sysroot/avr/lib/"
+  install -D -m 644 "/opt/avr/lib/gcc/avr/15.2.0/$a/libgcc.a" "$dist/sysroot/libgcc/$a/libgcc.a"
+done
 cp -a /opt/avr/lib/gcc/avr/15.2.0/include/. /opt/avr/lib/gcc/avr/15.2.0/include-fixed/. "$dist/sysroot/gcc-include/"
 
 # ── 5. The Arduino platform ──────────────────────────────────────────────────────────────────
-# Per processor and clock (the Nano's variant, eightanaloginputs, over standard): the core as
-# libcore.a and each library as lib<name>.a, compiled with platform.txt's flags for that board —
-# the Nano at 16 MHz (ARDUINO_AVR_NANO) in lib/<mcu>, the 3.3 V Pro Mini at 8 MHz
-# (ARDUINO_AVR_PRO) in lib/<mcu>-8mhz; ARDUINO 10819, ARDUINO_ARCH_AVR — but without -flto: the
-# browser links with ld alone. A library's sources are its src/ tree (Arduino's 1.5 format) or its top level and
-# utility/ (the older one); every library's include directory is on every compile, as the IDE
-# resolves a library's own includes.
-core=/build/ArduinoCore-avr-1.8.8
+# Two platforms: ArduinoCore-avr (the Nano, Pro Mini, Leonardo and Mega 2560) and ATTinyCore
+# (the ATtiny85 and ATtiny84, with its own Wire, SPI, EEPROM, SoftwareSerial and Servo over the
+# USI and the tinies' timers). Per board: the core as libcore.a and each library as lib<name>.a,
+# compiled with that core's platform.txt and boards.txt flags for the board in lib/<mcu><suffix>
+# (BUILDS below), but without -flto: the browser links with ld alone. A library's sources are its
+# src/ tree (Arduino's 1.5 format) or its top level and utility/ (the older one); every library's
+# include directory of the platform is on every compile, as the IDE resolves a library's own
+# includes. arduino/libraries.txt: platform, name, version, include directory, archive, licence.
+core=/build/ArduinoCore-avr-1.8.8 tinycore=/build/ATTinyCore-1.5.2/avr
 arduino="$dist/sysroot/arduino"
-mkdir -p "$arduino/cores" "$arduino/variants" "$arduino/libraries"
+mkdir -p "$arduino/cores" "$arduino/variants" "$arduino/libraries" "$arduino/tiny/libraries"
 cp -a "$core/cores/arduino" "$arduino/cores/arduino"
-find "$arduino/cores/arduino" -type f ! -name '*.h' ! -name new -delete
-for v in standard eightanaloginputs; do install -D -m 644 "$core/variants/$v/pins_arduino.h" "$arduino/variants/$v/pins_arduino.h"; done
-libraries=""
-for l in Wire SPI EEPROM SoftwareSerial; do libraries="$libraries $core/libraries/$l"; done
-for l in Servo-1.3.0 LiquidCrystal-1.0.7 Adafruit-GFX-Library-1.13.0 Adafruit_BusIO-1.17.4 Adafruit_SSD1306-2.5.17 Adafruit_SHT31-2.2.2 Adafruit_NeoPixel-1.15.5 arduino-core-0.7.3 arduino-i2c-scd4x-1.1.0 LedControl-1.0.6; do libraries="$libraries /build/$l"; done
-property() { sed -n "s/^$2=//p" "$1/library.properties" | tr -d '\r'; }
+cp -a "$tinycore/cores/tiny" "$arduino/cores/tiny"
+find "$arduino/cores" -type f ! -name '*.h' ! -name new -delete
+for v in standard eightanaloginputs leonardo mega; do install -D -m 644 "$core/variants/$v/pins_arduino.h" "$arduino/variants/$v/pins_arduino.h"; done
+for v in tinyX5 tinyX4_reverse; do install -D -m 644 "$tinycore/variants/$v/pins_arduino.h" "$arduino/variants/$v/pins_arduino.h"; done
+external=""
+for l in LiquidCrystal-1.0.7 Adafruit-GFX-Library-1.13.0 Adafruit_BusIO-1.17.4 Adafruit_SSD1306-2.5.17 Adafruit_SHT31-2.2.2 Adafruit_NeoPixel-1.15.5 arduino-core-0.7.3 arduino-i2c-scd4x-1.1.0 LedControl-1.0.6; do external="$external /build/$l"; done
+# Each platform's libraries: its core's own, then the ones every AVR shares (ArduinoCore-avr's
+# Servo drives a 16-bit Timer1; the tinies take ATTinyCore's).
+libraries_avr="$core/libraries/Wire $core/libraries/SPI $core/libraries/EEPROM $core/libraries/SoftwareSerial /build/Servo-1.3.0$external"
+libraries_tiny="$tinycore/libraries/Wire $tinycore/libraries/SPI $tinycore/libraries/EEPROM $tinycore/libraries/SoftwareSerial $tinycore/libraries/Servo_ATTinyCore$external"
+property() { sed -n "s/^$2=//p" "$1/library.properties" | tr -d '\r' | head -1; }
 sources() { # a library's sources, in a stable order
   if [ -d "$1/src" ]; then find "$1/src" -name '*.c' -o -name '*.cpp' -o -name '*.S'
   else find "$1" -maxdepth 1 \( -name '*.c' -o -name '*.cpp' -o -name '*.S' \); [ -d "$1/utility" ] && find "$1/utility" -name '*.c' -o -name '*.cpp' -o -name '*.S'
   fi | LC_ALL=C sort
 }
-includes="-I$core/cores/arduino -I$core/variants/eightanaloginputs"
-for l in $libraries; do if [ -d "$l/src" ]; then includes="$includes -I$l/src"; else includes="$includes -I$l"; fi; done
-printf '# name version include archive licence\n' > "$arduino/libraries.txt"
-for build in atmega328p:16000000:NANO: atmega168p:16000000:NANO: atmega328p:8000000:PRO:-8mhz atmega168p:8000000:PRO:-8mhz; do
-  IFS=: read -r mcu clock board suffix <<< "$build"
+name_of() { property "$1" name | tr -c 'A-Za-z0-9_\n' _; }
+# Where a library's headers go: a platform's own libraries under tiny/ for ATTinyCore, the
+# shared ones once under libraries/.
+include_of() { # platform, library
+  local base=libraries; case $2 in "$tinycore"/*) base=tiny/libraries ;; esac
+  if [ -d "$2/src" ]; then echo "$base/$(name_of "$2")/src"; else echo "$base/$(name_of "$2")"; fi
+}
+printf '# platform name version include archive licence\n' > "$arduino/libraries.txt"
+for platform in avr tiny; do
+  eval "libraries=\$libraries_$platform"
+  for l in $libraries; do
+    include=$(include_of $platform "$l")
+    if [ -d "$l/src" ]; then from="$l/src"; else from="$l"; fi
+    if [ ! -d "$arduino/$include" ]; then
+      (cd "$from" && find . \( -path ./examples -o -path ./fontconvert -o -path ./extras \) -prune -o \( -name '*.h' -o -name '*.hpp' -o -name '*.inc' \) -print | LC_ALL=C sort | while read -r h; do install -D -m 644 "$h" "$arduino/$include/${h#./}"; done)
+    fi
+    licence=$(ls "$l" | grep -iE '^(license|licence|copying)' | head -1 || true)
+    printf '%s %s %s %s lib%s.a %s\n' $platform "$(name_of "$l")" "$(property "$l" version)" "$include" "$(name_of "$l")" "${licence:--}" >> "$arduino/libraries.txt"
+  done
+done
+# mcu, clock, board, suffix, platform, variant, extra flags of the board.
+BUILDS="
+atmega328p 16000000 AVR_NANO - avr eightanaloginputs -
+atmega168p 16000000 AVR_NANO - avr eightanaloginputs -
+atmega328p 8000000 AVR_PRO -8mhz avr eightanaloginputs -
+atmega168p 8000000 AVR_PRO -8mhz avr eightanaloginputs -
+atmega32u4 16000000 AVR_LEONARDO - avr leonardo usb
+atmega2560 16000000 AVR_MEGA2560 - avr mega -
+attiny85 8000000 AVR_ATTINYX5 - tiny tinyX5 -DCLOCK_SOURCE=0,-DNEOPIXELPORT=PORTB
+attiny85 16000000 AVR_ATTINYX5 -16mhz tiny tinyX5 -DCLOCK_SOURCE=6,-DNEOPIXELPORT=PORTB
+attiny84 8000000 AVR_ATTINYX4 - tiny tinyX4_reverse -DCLOCK_SOURCE=0,-DNEOPIXELPORT=PORTA
+"
+echo "$BUILDS" | while read -r mcu clock board suffix platform variant extra; do
+  [ -n "$mcu" ] || continue
+  [ "$suffix" = - ] && suffix=
   lib=$mcu$suffix
   out=/build/arduino-$lib && rm -rf "$out" "$arduino/lib/$lib" && mkdir -p "$out" "$arduino/lib/$lib"
-  defines="-mmcu=$mcu -DF_CPU=${clock}L -DARDUINO=10819 -DARDUINO_AVR_$board -DARDUINO_ARCH_AVR"
-  cflags="-c -Os -w -std=gnu11 -ffunction-sections -fdata-sections $defines"
-  cxxflags="-c -Os -w -std=gnu++11 -fpermissive -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -Wno-error=narrowing $defines"
-  sflags="-c -x assembler-with-cpp $defines"
+  eval "libraries=\$libraries_$platform"
+  defines=(-mmcu=$mcu -DF_CPU=${clock}L -DARDUINO=10819 -DARDUINO_$board -DARDUINO_ARCH_AVR)
+  # The Leonardo's USB descriptor (boards.txt: build.usb_flags).
+  case $extra in
+    usb) defines+=(-DUSB_VID=0x2341 -DUSB_PID=0x8036 '-DUSB_MANUFACTURER="Unknown"' '-DUSB_PRODUCT="Arduino Leonardo"') ;;
+    -) ;;
+    *) IFS=, read -r -a more <<< "$extra"; defines+=("${more[@]}") ;;
+  esac
+  if [ $platform = tiny ]; then includes=(-I"$tinycore/cores/tiny" -I"$tinycore/variants/$variant"); corefiles=$tinycore/cores/tiny
+  else includes=(-I"$core/cores/arduino" -I"$core/variants/$variant"); corefiles=$core/cores/arduino; fi
+  for l in $libraries; do if [ -d "$l/src" ]; then includes+=(-I"$l/src"); else includes+=(-I"$l"); fi; done
+  cflags=(-c -Os -w -std=gnu11 -ffunction-sections -fdata-sections "${defines[@]}")
+  # ATTinyCore's C sources define variables in headers (USI_TWI_Slave.h), as GCC before 10 let C
+  # do by default (common symbols): its platform keeps them common.
+  [ $platform = tiny ] && cflags+=(-fcommon)
+  cxxflags=(-c -Os -w -std=gnu++11 -fpermissive -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -Wno-error=narrowing "${defines[@]}")
+  sflags=(-c -x assembler-with-cpp "${defines[@]}")
   archive() { # the archive's name, then its sources
     local name=$1 dir="$out/$1" objects=() f o; shift; mkdir -p "$dir"
     for f in "$@"; do
       o="$dir/$(echo "${f#/build/}" | tr / _).o"
-      case $f in *.c) avr-gcc $cflags $includes "$f" -o "$o" ;; *.cpp) avr-g++ $cxxflags $includes "$f" -o "$o" ;; *.S) avr-gcc $sflags $includes "$f" -o "$o" ;; esac
+      case $f in *.c) avr-gcc "${cflags[@]}" "${includes[@]}" "$f" -o "$o" ;; *.cpp) avr-g++ "${cxxflags[@]}" "${includes[@]}" "$f" -o "$o" ;; *.S) avr-gcc "${sflags[@]}" "${includes[@]}" "$f" -o "$o" ;; esac
       objects+=("$o")
     done
     avr-ar rcsD "$arduino/lib/$lib/lib$name.a" "${objects[@]}"
   }
-  archive core $(find "$core/cores/arduino" -name '*.c' -o -name '*.cpp' -o -name '*.S' | LC_ALL=C sort)
-  for l in $libraries; do
-    name=$(property "$l" name | tr -c 'A-Za-z0-9_\n' _)
-    archive "$name" $(sources "$l")
-    [ $lib = atmega328p ] || continue
-    # The headers where the sketch's compile finds them: the library's include directory.
-    if [ -d "$l/src" ]; then from="$l/src" include="libraries/$name/src"; else from="$l" include="libraries/$name"; fi
-    (cd "$from" && find . \( -path ./examples -o -path ./fontconvert -o -path ./extras \) -prune -o \( -name '*.h' -o -name '*.hpp' -o -name '*.inc' \) -print | LC_ALL=C sort | while read -r h; do install -D -m 644 "$h" "$arduino/$include/${h#./}"; done)
-    licence=$(ls "$l" | grep -iE '^(license|licence|copying)' | head -1 || true)
-    printf '%s %s %s lib%s.a %s\n' "$name" "$(property "$l" version)" "$include" "$name" "${licence:--}" >> "$arduino/libraries.txt"
-  done
+  archive core $(find "$corefiles" -name '*.c' -o -name '*.cpp' -o -name '*.S' | LC_ALL=C sort)
+  for l in $libraries; do archive "$(name_of "$l")" $(sources "$l"); done
 done
 
 # ── 6. Arduino's ctags in WebAssembly ────────────────────────────────────────────────────────
@@ -191,7 +238,7 @@ fi
 install -D /build/wasm-ctags/ctags "$dist/ctags.js"
 
 # ── 7. The licences ──────────────────────────────────────────────────────────────────────────
-for s in gcc-15.2.0 binutils-2.45 gmp-6.3.0 mpfr-4.2.1 mpc-1.3.1 avr-libc-2.2.1 ctags-5.8-arduino11 ArduinoCore-avr-1.8.8 Servo-1.3.0 LiquidCrystal-1.0.7 Adafruit-GFX-Library-1.13.0 Adafruit_BusIO-1.17.4 Adafruit_SSD1306-2.5.17 Adafruit_SHT31-2.2.2 Adafruit_NeoPixel-1.15.5 arduino-core-0.7.3 arduino-i2c-scd4x-1.1.0 LedControl-1.0.6; do
+for s in gcc-15.2.0 binutils-2.45 gmp-6.3.0 mpfr-4.2.1 mpc-1.3.1 avr-libc-2.2.1 ctags-5.8-arduino11 ArduinoCore-avr-1.8.8 ATTinyCore-1.5.2 Servo-1.3.0 LiquidCrystal-1.0.7 Adafruit-GFX-Library-1.13.0 Adafruit_BusIO-1.17.4 Adafruit_SSD1306-2.5.17 Adafruit_SHT31-2.2.2 Adafruit_NeoPixel-1.15.5 arduino-core-0.7.3 arduino-i2c-scd4x-1.1.0 LedControl-1.0.6; do
   mkdir -p "$dist/licenses/$s"
   for f in /build/$s/COPYING* /build/$s/LICENSE* /build/$s/LICENCE* /build/$s/license* /build/$s/README*; do [ -f "$f" ] && cp "$f" "$dist/licenses/$s/"; done
 done

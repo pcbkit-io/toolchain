@@ -9,6 +9,7 @@ mpc-1.3.1.tar.gz https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz ab642492f5cf882b74
 avr-libc-2.2.1.tar.bz2 https://github.com/avrdudes/avr-libc/releases/download/avr-libc-2_2_1-release/avr-libc-2.2.1.tar.bz2 006a6306cbbc938c3bdb583ac54f93fe7d7c8cf97f9cde91f91c6fb0273ab465
 # The Arduino platform: the AVR core and the libraries sketches use, at their tagged releases.
 ArduinoCore-avr-1.8.8.tar.gz https://github.com/arduino/ArduinoCore-avr/archive/refs/tags/1.8.8.tar.gz e37de8a50ccf3a6a43aee2d482c066519ec05fb7fff63f57fd9daf0fd238b808
+ATTinyCore-1.5.2.tar.gz https://github.com/SpenceKonde/ATTinyCore/archive/refs/tags/1.5.2.tar.gz e3b94d9fc5776e1fdcb48c4fe045fa89a268f35758bc54ed63fabbd66ef5d36d
 Servo-1.3.0.tar.gz https://github.com/arduino-libraries/Servo/archive/refs/tags/1.3.0.tar.gz 7b829d24f9165e9d2689d157568f066f290cbe41734a9384b9a06250a69e7993
 LiquidCrystal-1.0.7.tar.gz https://github.com/arduino-libraries/LiquidCrystal/archive/refs/tags/1.0.7.tar.gz 3641e8f4175ee8c66bbbc7e93961cd8ef333b9cd3689aa83c2512a23ba68200c
 Adafruit-GFX-Library-1.13.0.tar.gz https://github.com/adafruit/Adafruit-GFX-Library/archive/refs/tags/1.13.0.tar.gz 8ab038fb445d99f320feb9d463c7afe4cd91475fd8ea9c4047be444aacbb3b29
